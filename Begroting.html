@@ -223,9 +223,11 @@ function build(){
     const dir = t.amount < 0 ? "af" : "bij";
     let auto="?", avia="niet herkend", rule=null;
     const text = ((t.name||"") + " " + (t.desc||"")).toLowerCase();
+    let best = 0;
     for (const w of D.rules.words) {
-      if (!w.text || (w.dir && w.dir !== dir)) continue;
-      if (text.includes(w.text.trim().toLowerCase())) { rule=w; avia="zoekwoord"; break; }
+      const wt = (w.text||"").trim().toLowerCase();
+      if (!wt || (w.dir && w.dir !== dir)) continue;
+      if (wt.length > best && text.includes(wt)) { rule=w; avia="zoekwoord"; best = wt.length; }
     }
     if (!rule) {
       const shop = shopOf(t);
@@ -332,8 +334,32 @@ function render(){
   $("#fileName").textContent = fileName ? fileName + (password ? " 🔒" : "") : "nog niet bewaard bestand";
   renderTabs();
   const f = {vergelijk:vVergelijk,transacties:vTransacties,begroting:vBegroting,regels:vRegels,categorieen:vCategorieen,abonnementen:vAbonnementen,bestand:vBestand}[view];
+  const fk = focusKey(document.activeElement);
+  let sel = null; try { const a = document.activeElement; if (fk && a.selectionStart != null) sel = [a.selectionStart, a.selectionEnd]; } catch(e) {}
   $("#main").innerHTML = f();
   after[view]?.();
+  if (fk) { const n = $("#main").querySelector(fk); if (n) { n.focus({preventScroll:true}); if (sel) try { n.setSelectionRange(sel[0], sel[1]); } catch(e) {} } }
+}
+/* focus terugzetten na opnieuw tekenen (bijv. als een rij door sorteren verschuift) */
+function focusKey(el){
+  if (!el || !el.closest || !el.closest("#main")) return null;
+  const d = el.dataset || {}, q = v => `"${CSS.escape(v)}"`;
+  if (d.bf) { const tr = el.closest("tr[data-id]"); return tr ? `tr[data-id=${q(tr.dataset.id)}] [data-bf=${q(d.bf)}]` : null; }
+  for (const k of ["rf","cf"]) if (d[k] && d.id) return `[data-${k}=${q(d[k])}][data-id=${q(d.id)}]`;
+  if (d.gf && d.gid) return `[data-gf=${q(d.gf)}][data-gid=${q(d.gid)}]`;
+  if (d.act && d.id) return `[data-act=${q(d.act)}][data-id=${q(d.id)}]`;
+  return el.id ? `#${CSS.escape(el.id)}` : null;
+}
+/* opnieuw tekenen pas als de muis/vinger los is, zodat een klik op een knop niet verloren gaat */
+let pointerDown = false, pendingRender = false;
+document.addEventListener("pointerdown", () => { pointerDown = true; }, true);
+document.addEventListener("pointerup", () => { pointerDown = false; if (pendingRender) setTimeout(flushRender, 0); }, true);
+document.addEventListener("pointercancel", () => { pointerDown = false; if (pendingRender) setTimeout(flushRender, 0); }, true);
+function flushRender(){ if (!pendingRender) return; pendingRender = false; render(); }
+function laterRender(el){
+  pendingRender = true;
+  if (pointerDown && el && el.tagName !== "SELECT") return;   // wacht op pointerup
+  setTimeout(flushRender, 0);
 }
 const after = {};
 
@@ -508,7 +534,8 @@ after.transacties = () => {
 /* ---------- Begroting ---------- */
 function vBegroting(){
   const C = build();
-  const sorter = {categorie:(a,b)=>a.category.localeCompare(b.category)||a.name.localeCompare(b.name), naam:(a,b)=>a.name.localeCompare(b.name),
+  const lc = (a,b) => (a||"").localeCompare(b||"", "nl", {sensitivity:"base"});
+  const sorter = {categorie:(a,b)=>lc(a.category,b.category)||lc(a.name,b.name), naam:(a,b)=>lc(a.name,b.name)||lc(a.category,b.category),
     bedrag:(a,b)=>(+b.amount||0)-(+a.amount||0), status:(a,b)=>budgetStatus(a).localeCompare(budgetStatus(b))}[ui.budSort];
   const blocks = D.groups.map(g => ({g, lines: D.budget.filter(b => C.catByName.get(b.category)?.group === g.name)}));
   const orphan = D.budget.filter(b => !C.catByName.has(b.category));
@@ -532,7 +559,7 @@ function vBegroting(){
       ${lines.slice().sort(sorter).map(lineRow).join("")}
       <tr><td colspan="10" style="background:#${light}">${gname?`<button class="btn sm" data-act="addbud" data-g="${esc(gname)}">＋ regel in ${esc(title.toLowerCase())}</button>`:""}</td></tr>`; };
   return `<div class="card"><div class="row"><h2 style="margin:0">Begroting</h2><span class="spacer"></span>
-    <label class="small">Sorteer binnen groep op <select data-act="budsort">${["categorie","naam","bedrag","status"].map(s=>`<option ${ui.budSort===s?"selected":""}>${s}</option>`).join("")}</select></label>
+    <label class="small">Sorteer binnen groep op <select data-act="budsort">${[["categorie","categorie, dan naam"],["naam","naam"],["bedrag","bedrag"],["status","status"]].map(([v,l])=>`<option value="${v}" ${ui.budSort===v?"selected":""}>${l}</option>`).join("")}</select></label>
     <label class="chk small"><input type="checkbox" data-act="budact" ${ui.budOnlyActive?"checked":""}> alleen actief</label></div>
     <p class="small muted" style="margin:8px 0 0">Eén regel per post. Jaarbedragen worden over 12 maanden verdeeld; 'eenmalig' telt in de maand van de startdatum. Status: <span class="pill st-actief">actief</span> geen einddatum of einddatum in deze maand of later · <span class="pill st-gestopt">gestopt</span> einddatum in een eerdere maand · <span class="pill st-toekomst">nog niet begonnen</span> startdatum in een latere maand. Wijzigingen worden direct verwerkt.</p></div>
   <div class="card tw"><table class="list">${head}
@@ -546,21 +573,23 @@ function vRegels(){
   const dirSel = (v, kind, id) => `<select data-rf="dir" data-kind="${kind}" data-id="${esc(id)}"><option value="">bij én af</option><option ${v==="bij"?"selected":""} value="bij">alleen bij</option><option ${v==="af"?"selected":""} value="af">alleen af</option></select>`;
   const hit = id => `<td class="n small">${C.ruleHits.get(id)||0}</td>`;
   const catSel = (v, kind, id) => `<select data-rf="category" data-kind="${kind}" data-id="${esc(id)}" class="${v&&!C.catByName.has(v)?"qmark":""}">${catOptions(v,false)}</select>`;
-  const W = D.rules.words.map((r,i) => `<tr><td style="white-space:nowrap"><button class="icon" data-act="mv" data-kind="words" data-id="${esc(r.id)}" data-v="-1" title="Omhoog">▲</button><button class="icon" data-act="mv" data-kind="words" data-id="${esc(r.id)}" data-v="1" title="Omlaag">▼</button></td>
+  const cmp = (a,b) => (a||"").localeCompare(b||"", "nl", {sensitivity:"base"});
+  const byCat = key => (a,b) => cmp(a.category,b.category) || cmp(a[key],b[key]);
+  const W = D.rules.words.slice().sort(byCat("text")).map(r => `<tr>
     <td><input type="text" data-rf="text" data-kind="words" data-id="${esc(r.id)}" value="${esc(r.text)}"></td><td>${catSel(r.category,"words",r.id)}</td><td>${dirSel(r.dir,"words",r.id)}</td>
     <td><input type="text" data-rf="note" data-kind="words" data-id="${esc(r.id)}" value="${esc(r.note)}"></td>${hit(r.id)}<td><button class="icon" data-act="delrule" data-kind="words" data-id="${esc(r.id)}">✕</button></td></tr>`).join("");
-  const N = D.rules.names.slice().sort((a,b)=>a.key.localeCompare(b.key)).map(r => `<tr>
+  const N = D.rules.names.slice().sort(byCat("key")).map(r => `<tr>
     <td><input type="text" data-rf="key" data-kind="names" data-id="${esc(r.id)}" value="${esc(r.key)}"></td><td>${catSel(r.category,"names",r.id)}</td><td>${dirSel(r.dir,"names",r.id)}</td>
     <td><input type="text" data-rf="note" data-kind="names" data-id="${esc(r.id)}" value="${esc(r.note)}"></td>${hit(r.id)}<td><button class="icon" data-act="delrule" data-kind="names" data-id="${esc(r.id)}">✕</button></td></tr>`).join("");
-  const S = D.rules.sns.map(r => `<tr><td><input type="text" data-rf="sns" data-kind="sns" data-id="${esc(r.id)}" value="${esc(r.sns)}"></td><td>${catSel(r.category,"sns",r.id)}</td>${hit(r.id)}<td><button class="icon" data-act="delrule" data-kind="sns" data-id="${esc(r.id)}">✕</button></td></tr>`).join("");
+  const S = D.rules.sns.slice().sort(byCat("sns")).map(r => `<tr><td><input type="text" data-rf="sns" data-kind="sns" data-id="${esc(r.id)}" value="${esc(r.sns)}"></td><td>${catSel(r.category,"sns",r.id)}</td>${hit(r.id)}<td><button class="icon" data-act="delrule" data-kind="sns" data-id="${esc(r.id)}">✕</button></td></tr>`).join("");
   return `<div class="card"><h2>Regels</h2><div class="help"><b>Zo wordt een transactie ingedeeld</b> – de eerste die past wint:
     <ol><li><b>Handmatig</b> gekozen categorie bij de transactie gaat altijd voor.</li>
-    <li><b>Zoekwoorden</b>: staat het woord ergens in de naam of de omschrijving? Volgorde telt – de bovenste die past wint.</li>
+    <li><b>Zoekwoorden</b>: staat het woord ergens in de naam of de omschrijving? Passen er meerdere, dan wint het langste (meest specifieke) woord.</li>
     <li><b>Naam / winkel / IBAN</b>: precies gelijk aan de hele naam of winkelnaam (bij pinnen het stuk vóór '&gt;'), het eerste woord daarvan, of het IBAN.</li>
     <li><b>SNS-categorie</b>: de categorie die SNS zelf meegeeft, vertaald naar die van jou.</li></ol>
-    Niets gevonden → <b>?</b>. Hoofdletters maken niet uit. 'Treffers' = hoeveel transacties door deze regel worden ingedeeld.</div></div>
+    Niets gevonden → <b>?</b>. Hoofdletters maken niet uit. De lijsten staan gesorteerd op categorie en daarna op de eerste kolom. 'Treffers' = hoeveel transacties door deze regel worden ingedeeld.</div></div>
   <div class="card tw"><div class="row"><h3 style="margin:0;color:#B4471C">1. Zoekwoorden</h3><span class="spacer"></span><button class="btn sm" data-act="addrule" data-kind="words">＋ zoekwoord</button></div>
-    <table class="list" style="margin-top:6px"><tr><th></th><th style="min-width:170px">Zoekwoord</th><th style="min-width:180px">Categorie</th><th>Richting</th><th style="min-width:160px">Notitie</th><th class="n">Treffers</th><th></th></tr>${W||`<tr><td colspan="7" class="muted">Nog geen zoekwoorden.</td></tr>`}</table></div>
+    <table class="list" style="margin-top:6px"><tr><th style="min-width:170px">Zoekwoord</th><th style="min-width:180px">Categorie</th><th>Richting</th><th style="min-width:160px">Notitie</th><th class="n">Treffers</th><th></th></tr>${W||`<tr><td colspan="6" class="muted">Nog geen zoekwoorden.</td></tr>`}</table></div>
   <div class="card tw"><div class="row"><h3 style="margin:0;color:#2A5DA8">2. Naam / winkel / IBAN</h3><span class="spacer"></span><button class="btn sm" data-act="addrule" data-kind="names">＋ regel</button></div>
     <table class="list" style="margin-top:6px"><tr><th style="min-width:200px">Naam / winkel / IBAN (precies)</th><th style="min-width:180px">Categorie</th><th>Richting</th><th style="min-width:160px">Notitie</th><th class="n">Treffers</th><th></th></tr>${N||`<tr><td colspan="6" class="muted">Nog geen regels.</td></tr>`}</table></div>
   <div class="card tw"><div class="row"><h3 style="margin:0;color:#1F4E5A">3. SNS-categorie</h3><span class="spacer"></span><button class="btn sm" data-act="addrule" data-kind="sns">＋ vertaling</button></div>
@@ -717,8 +746,8 @@ document.addEventListener("change", ev => {
   if (a === "budact") { ui.budOnlyActive = el.checked; render(); return; }
   if (a === "empty") { ui.showEmpty = el.checked; render(); return; }
   if (el.dataset.bf) { const tr = el.closest("tr"); const b = D.budget.find(b => b.id === tr.dataset.id);
-    b[el.dataset.bf] = el.dataset.bf === "amount" ? (el.value === "" ? "" : +el.value) : el.value; changed(el.dataset.bf === "category" || el.dataset.bf === "start" || el.dataset.bf === "end" || el.dataset.bf === "freq" || el.dataset.bf === "amount"); return; }
-  if (el.dataset.rf) { const r = D.rules[el.dataset.kind].find(r => r.id === el.dataset.id); r[el.dataset.rf] = el.value; changed(); return; }
+    b[el.dataset.bf] = el.dataset.bf === "amount" ? (el.value === "" ? "" : +el.value) : el.value; changed(false); laterRender(el); return; }
+  if (el.dataset.rf) { const r = D.rules[el.dataset.kind].find(r => r.id === el.dataset.id); r[el.dataset.rf] = el.value; changed(false); laterRender(el); return; }
   if (el.dataset.cf) { const c = D.categories.find(c => c.id === el.dataset.id);
     if (el.dataset.cf === "name") return renameCategory(c, el.value.trim(), el);
     c[el.dataset.cf] = el.value; changed(); return; }
