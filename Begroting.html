@@ -364,9 +364,17 @@ function laterRender(el){
 /* tekstvakken in Begroting en Regels: bij elke toets bewaren, bij het verlaten van het vak opnieuw sorteren
    (iPhone-Safari stuurt niet altijd een 'change' als je naar een ander vak tikt) */
 let fieldEdited = null;
+/* bedragen: komma én punt toegestaan (iPhone-Safari geeft bij een komma in een getalveld een lege waarde) */
+function parseAmt(v){
+  v = String(v ?? "").replace(/[\s€]/g, ""); if (v === "") return "";
+  if (v.includes(",")) v = v.replace(/\./g, "").replace(",", ".");
+  const n = Number(v); return isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+function fmtAmt(a){ if (a === "" || a == null || !isFinite(+a)) return ""; const n = +a; return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ","); }
 function setField(el){
   if (el.dataset.bf) { const tr = el.closest("tr"); const b = tr && D.budget.find(b => b.id === tr.dataset.id); if (!b) return false;
-    b[el.dataset.bf] = el.dataset.bf === "amount" ? (el.value === "" ? "" : +el.value) : el.value; return true; }
+    if (el.dataset.bf === "amount") { const n = parseAmt(el.value); el.classList.toggle("qmark", n === null); if (n === null) return false; b.amount = n; }
+    else b[el.dataset.bf] = el.value; return true; }
   if (el.dataset.rf) { const r = D.rules[el.dataset.kind]?.find(r => r.id === el.dataset.id); if (!r) return false; r[el.dataset.rf] = el.value; return true; }
   return false;
 }
@@ -560,7 +568,7 @@ function vBegroting(){
     return `<tr data-id="${esc(b.id)}">
       <td><input type="text" data-bf="name" value="${esc(b.name)}" placeholder="Naam"></td>
       <td><select data-bf="category">${catOptions(b.category,false)}</select></td>
-      <td><input type="number" step="0.01" data-bf="amount" value="${esc(b.amount)}" style="text-align:right"></td>
+      <td><input type="text" inputmode="decimal" autocomplete="off" data-bf="amount" value="${esc(fmtAmt(b.amount))}" placeholder="0,00" style="text-align:right"></td>
       <td><select data-bf="freq">${FREQS.map(f=>`<option ${b.freq===f?"selected":""}>${f}</option>`).join("")}</select></td>
       <td><input type="date" data-bf="start" value="${esc(b.start)}"></td>
       <td><input type="date" data-bf="end" value="${esc(b.end)}"></td>
@@ -697,7 +705,7 @@ function vBestand(){
     <div class="row"><button class="btn" data-act="pw">${password ? "Wachtwoord wijzigen" : "Wachtwoord instellen"}</button>${password ? `<button class="btn danger" data-act="nopw">Wachtwoord verwijderen</button>` : ""}</div></div>
   <div class="card"><h3>Exporteren</h3><p class="small muted" style="margin-top:0">Als CSV-bestand (puntkomma, Nederlandse notatie) – te openen in Numbers, Excel of LibreOffice.</p>
     <div class="row"><button class="btn" data-act="exp" data-v="tx">Transacties met categorie</button><button class="btn" data-act="exp" data-v="bud">Begroting</button><button class="btn" data-act="exp" data-v="cmp">Vergelijk (gekozen periode)</button></div></div>
-  <div class="card"><h3>Over</h3><p class="small muted" style="margin:0">Programmaversie <b>20-11-2026 c</b>. Alles draait in je browser; er wordt niets verstuurd. ${D.transactions.length} transacties · ${D.budget.length} begrotingsregels · ${D.rules.words.length + D.rules.names.length + D.rules.sns.length} regels · ${D.categories.length} categorieën.</p></div>`;
+  <div class="card"><h3>Over</h3><p class="small muted" style="margin:0">Programmaversie <b>20-11-2026 d</b>. Alles draait in je browser; er wordt niets verstuurd. ${D.transactions.length} transacties · ${D.budget.length} begrotingsregels · ${D.rules.words.length + D.rules.names.length + D.rules.sns.length} regels · ${D.categories.length} categorieën.</p></div>`;
 }
 
 /* =====================================================================
