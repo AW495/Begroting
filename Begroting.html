@@ -281,10 +281,14 @@ function period(){
 /* ---------- berekening Vergelijk ---------- */
 function compute(){
   const P = period(), C = build(), cur = todayMi();
-  const el = Math.max(0, Math.min(P.p2, cur) - Math.max(P.y1, C.first) + 1);
-  const rem = Math.max(0, P.ye - Math.max(Math.min(P.p2, cur), P.y1 - 1));
+  const ref = Math.min(P.p2, cur);                                   // laatste maand die meetelt
+  const rem = Math.max(0, P.ye - Math.max(ref, P.y1 - 1));           // resterende maanden dit jaar
+  // gemiddelde: afgelopen 12 maanden t/m ref, gedeeld door het aantal maanden waarin er transacties zijn
+  const w1 = ref - 11, dataM = new Set();
+  for (const t of D.transactions) { const m = C.res.get(t.id).m; if (m >= w1 && m <= ref) dataM.add(m); }
+  const el = dataM.size;
   const per = new Map(); // categorie -> cijfers
-  for (const c of D.categories) per.set(c.name, {B:0,W:0,BY:0,WY:0,BJ:0});
+  for (const c of D.categories) per.set(c.name, {B:0,W:0,BY:0,WY:0,BJ:0,W12:0});
   for (const b of D.budget) { const r = per.get(b.category); if (!r) continue;
     r.B += budgetIn(b, P.p1, P.p2); r.BY += budgetIn(b, P.y1, P.p2); r.BJ += budgetIn(b, P.y1, P.ye); }
   let qP=0, qY=0, nP=0, saldoP=0, qCountP=0;
@@ -294,13 +298,13 @@ function compute(){
     if (inP) { nP++; saldoP += t.amount; }
     if (x.cat === "?") { if (inP) { qP -= t.amount; qCountP++; } if (inY) qY -= t.amount; continue; }
     const r = per.get(x.cat); if (!r) continue;
-    if (inP) r.W += x.sign * t.amount; if (inY) r.WY += x.sign * t.amount;
+    if (inP) r.W += x.sign * t.amount; if (inY) r.WY += x.sign * t.amount; if (m >= w1 && m <= ref) r.W12 += x.sign * t.amount;
   }
   for (const c of D.categories) {
     const r = per.get(c.name), g = C.grpByName.get(c.group), sg = g ? g.sign : -1;
     const method = c.forecast || (g ? g.forecast : "begroting");
     r.method = method;
-    r.rest = method === "gemiddelde" ? (el > 0 ? r.WY / el * rem : 0) : Math.max(0, r.BJ - Math.max(0, r.WY));
+    r.rest = method === "gemiddelde" ? (el > 0 ? r.W12 / el * rem : 0) : Math.max(0, r.BJ - Math.max(0, r.WY));
     r.prog = r.WY + r.rest;
     r.V = sg === 1 ? r.W - r.B : r.B - r.W;
     r.VY = sg === 1 ? r.WY - r.BY : r.BY - r.WY;
@@ -647,7 +651,7 @@ function vCategorieen(){
       <td style="text-align:center"><input type="radio" name="savgrp" data-gf="savings" data-gid="${esc(g.id)}" ${g.savings?"checked":""}></td>
       <td style="white-space:nowrap"><span class="small muted">${D.categories.filter(c=>c.group===g.name).length} cat.</span> <button class="icon" data-act="delgrp" data-id="${esc(g.id)}">✕</button></td></tr>`).join("")}</table></div>`;
   return groupsCard + `<div class="card"><h2>Categorieën</h2><p class="small muted" style="margin:0">De ene lijst voor begroting, transacties en regels. Een naam wijzigen past hem overal aan. Volgorde (▲▼) = volgorde op Vergelijk.
-    <b>Prognose</b>: 'begroting' = wat er volgens de begroting dit jaar nog moet komen; 'gemiddelde' = gemiddeld per maand tot nu toe × resterende maanden.</p></div>
+    <b>Prognose</b>: 'begroting' = wat er volgens de begroting dit jaar nog moet komen; 'gemiddelde' = gemiddeld per maand over de afgelopen 12 maanden × resterende maanden. Alleen maanden waarin transacties zijn ingelezen tellen mee, dus ontbrekende maanden halen het gemiddelde niet omlaag.</p></div>
     <div class="card tw"><table class="list"><tr><th></th><th style="min-width:190px">Categorie</th><th>Groep</th><th>Prognose</th><th style="min-width:200px">Toelichting</th><th></th></tr>${rows}</table></div>`;
 }
 
@@ -705,7 +709,7 @@ function vBestand(){
     <div class="row"><button class="btn" data-act="pw">${password ? "Wachtwoord wijzigen" : "Wachtwoord instellen"}</button>${password ? `<button class="btn danger" data-act="nopw">Wachtwoord verwijderen</button>` : ""}</div></div>
   <div class="card"><h3>Exporteren</h3><p class="small muted" style="margin-top:0">Als CSV-bestand (puntkomma, Nederlandse notatie) – te openen in Numbers, Excel of LibreOffice.</p>
     <div class="row"><button class="btn" data-act="exp" data-v="tx">Transacties met categorie</button><button class="btn" data-act="exp" data-v="bud">Begroting</button><button class="btn" data-act="exp" data-v="cmp">Vergelijk (gekozen periode)</button></div></div>
-  <div class="card"><h3>Over</h3><p class="small muted" style="margin:0">Programmaversie <b>20-11-2026 d</b>. Alles draait in je browser; er wordt niets verstuurd. ${D.transactions.length} transacties · ${D.budget.length} begrotingsregels · ${D.rules.words.length + D.rules.names.length + D.rules.sns.length} regels · ${D.categories.length} categorieën.</p></div>`;
+  <div class="card"><h3>Over</h3><p class="small muted" style="margin:0">Programmaversie <b>20-11-2026 e</b>. Alles draait in je browser; er wordt niets verstuurd. ${D.transactions.length} transacties · ${D.budget.length} begrotingsregels · ${D.rules.words.length + D.rules.names.length + D.rules.sns.length} regels · ${D.categories.length} categorieën.</p></div>`;
 }
 
 /* =====================================================================
