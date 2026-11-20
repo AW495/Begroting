@@ -358,9 +358,25 @@ document.addEventListener("pointercancel", () => { pointerDown = false; if (pend
 function flushRender(){ if (!pendingRender) return; pendingRender = false; render(); }
 function laterRender(el){
   pendingRender = true;
-  if (pointerDown && el && el.tagName !== "SELECT") return;   // wacht op pointerup
+  if (pointerDown && el && el.tagName !== "SELECT") { setTimeout(flushRender, 600); return; }   // wacht op loslaten, maar nooit langer dan 0,6 s
   setTimeout(flushRender, 0);
 }
+/* tekstvakken in Begroting en Regels: bij elke toets bewaren, bij het verlaten van het vak opnieuw sorteren
+   (iPhone-Safari stuurt niet altijd een 'change' als je naar een ander vak tikt) */
+let fieldEdited = null;
+function setField(el){
+  if (el.dataset.bf) { const tr = el.closest("tr"); const b = tr && D.budget.find(b => b.id === tr.dataset.id); if (!b) return false;
+    b[el.dataset.bf] = el.dataset.bf === "amount" ? (el.value === "" ? "" : +el.value) : el.value; return true; }
+  if (el.dataset.rf) { const r = D.rules[el.dataset.kind]?.find(r => r.id === el.dataset.id); if (!r) return false; r[el.dataset.rf] = el.value; return true; }
+  return false;
+}
+document.addEventListener("input", ev => {
+  const el = ev.target; if (!D || el.tagName !== "INPUT" || !(el.dataset.bf || el.dataset.rf)) return;
+  if (setField(el)) { fieldEdited = el; changed(false); }
+});
+document.addEventListener("focusout", ev => {
+  const el = ev.target; if (el === fieldEdited) { fieldEdited = null; laterRender(el); }
+});
 const after = {};
 
 /* ---------- start ---------- */
@@ -681,7 +697,7 @@ function vBestand(){
     <div class="row"><button class="btn" data-act="pw">${password ? "Wachtwoord wijzigen" : "Wachtwoord instellen"}</button>${password ? `<button class="btn danger" data-act="nopw">Wachtwoord verwijderen</button>` : ""}</div></div>
   <div class="card"><h3>Exporteren</h3><p class="small muted" style="margin-top:0">Als CSV-bestand (puntkomma, Nederlandse notatie) – te openen in Numbers, Excel of LibreOffice.</p>
     <div class="row"><button class="btn" data-act="exp" data-v="tx">Transacties met categorie</button><button class="btn" data-act="exp" data-v="bud">Begroting</button><button class="btn" data-act="exp" data-v="cmp">Vergelijk (gekozen periode)</button></div></div>
-  <div class="card"><h3>Over</h3><p class="small muted" style="margin:0">Alles draait in je browser; er wordt niets verstuurd. ${D.transactions.length} transacties · ${D.budget.length} begrotingsregels · ${D.rules.words.length + D.rules.names.length + D.rules.sns.length} regels · ${D.categories.length} categorieën.</p></div>`;
+  <div class="card"><h3>Over</h3><p class="small muted" style="margin:0">Programmaversie <b>20-11-2026 c</b>. Alles draait in je browser; er wordt niets verstuurd. ${D.transactions.length} transacties · ${D.budget.length} begrotingsregels · ${D.rules.words.length + D.rules.names.length + D.rules.sns.length} regels · ${D.categories.length} categorieën.</p></div>`;
 }
 
 /* =====================================================================
@@ -745,9 +761,7 @@ document.addEventListener("change", ev => {
   if (a === "budsort") { ui.budSort = el.value; render(); return; }
   if (a === "budact") { ui.budOnlyActive = el.checked; render(); return; }
   if (a === "empty") { ui.showEmpty = el.checked; render(); return; }
-  if (el.dataset.bf) { const tr = el.closest("tr"); const b = D.budget.find(b => b.id === tr.dataset.id);
-    b[el.dataset.bf] = el.dataset.bf === "amount" ? (el.value === "" ? "" : +el.value) : el.value; changed(false); laterRender(el); return; }
-  if (el.dataset.rf) { const r = D.rules[el.dataset.kind].find(r => r.id === el.dataset.id); r[el.dataset.rf] = el.value; changed(false); laterRender(el); return; }
+  if (el.dataset.bf || el.dataset.rf) { if (setField(el)) { changed(false); laterRender(el); } return; }
   if (el.dataset.cf) { const c = D.categories.find(c => c.id === el.dataset.id);
     if (el.dataset.cf === "name") return renameCategory(c, el.value.trim(), el);
     c[el.dataset.cf] = el.value; changed(); return; }
