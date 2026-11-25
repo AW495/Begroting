@@ -1655,7 +1655,7 @@ function vBestand(){
     <div class="tw"><table><tr><th>Datum</th><th>Naam</th><th class="n">Bedrag</th><th>Verwijderd op</th><th></th></tr>
     ${D.deleted.slice().reverse().map(t => `<tr><td>${fmtDate(t.date)}</td><td>${esc(shopOf(t) || t.counter || "–")}${t.source==="manual"?` <span class="tb tb-hand">handmatig</span>`:""}</td><td class="n">${eur(t.amount)}</td><td class="small muted">${t.deletedAt ? fmtDate(t.deletedAt.slice(0,10)) : ""}</td><td><button class="btn sm" data-act="untrash" data-id="${esc(t.id)}">zet terug</button></td></tr>`).join("")}</table></div>
     <div class="row" style="margin-top:8px"><button class="btn sm danger" data-act="emptytrash">Prullenbak leegmaken</button></div></div>` : ""}
-  <div class="card"><h3>Over</h3><p class="small muted" style="margin:0">Programmaversie <b>25-11-2026 e</b>. Alles draait in je browser; er wordt niets verstuurd. ${D.transactions.length} transacties · ${D.budget.length} begrotingsregels · ${D.rules.words.length + D.rules.names.length + D.rules.sns.length} regels · ${D.categories.length} categorieën.</p></div>`;
+  <div class="card"><h3>Over</h3><p class="small muted" style="margin:0">Programmaversie <b>25-11-2026 f</b>. Alles draait in je browser; er wordt niets verstuurd. ${D.transactions.length} transacties · ${D.budget.length} begrotingsregels · ${D.rules.words.length + D.rules.names.length + D.rules.sns.length} regels · ${D.categories.length} categorieën.</p></div>`;
 }
 
 /* =====================================================================
@@ -1695,7 +1695,7 @@ document.addEventListener("click", async ev => {
     case "vyearall": { const {ys, sel} = jarenState(build()); ui.vYears = new Set(sel.length === ys.length ? ys.slice(-1) : ys); ui.vBudY = new Set([...ui.vYears].filter(yearHasBudget)); render(); break; }
     case "vbudy": { const y = +el.dataset.v; jarenState(build()); ui.vBudY.has(y) ? ui.vBudY.delete(y) : ui.vBudY.add(y); render(); break; }
     case "vgrpsel": navPush(); ui.vGrpKey = el.dataset.v; ui._scrollGrp = true; render(); break;
-    case "gocatv": navPush(); ui.txMonth = "alle"; ui.txView = "all"; ui.txCat = ui.vCat; ui.txSel.clear(); closeTx(); view = "transacties"; render(); window.scrollTo(0,0); break;
+    case "gocatv": navPush(); ui.txAcc = "__all"; ui.txLbl = ""; ui.txSearch = ""; ui.txMonth = "alle"; ui.txView = "all"; ui.txCat = ui.vCat; ui.txSel.clear(); closeTx(); view = "transacties"; render(); window.scrollTo(0,0); break;
     case "perb": { const PA = period(), PB = periodB(PA), span = PB.p2 - PB.p1, v = el.dataset.v;
       if (v === "prev") { ui.q1 -= span+1; ui.q2 = ui.q1 + span; }
       else if (v === "next") { ui.q1 += span+1; ui.q2 = ui.q1 + span; }
@@ -1703,14 +1703,14 @@ document.addEventListener("click", async ev => {
       else if (v === "lastyear") { ui.q1 = PA.p1 - 12; ui.q2 = PA.p2 - 12; }
       else if (v === "before") { const sa = PA.p2 - PA.p1; ui.q2 = PA.p1 - 1; ui.q1 = ui.q2 - sa; }
       render(); break; }
-    case "goq": navPush(); ui.txMonth = "periode"; ui.txView = "all"; ui.txCat = "?"; ui.txSel.clear(); closeTx(); view = "transacties"; render(); window.scrollTo(0,0); break;
+    case "goq": navPush(); ui.txAcc = "__all"; ui.txLbl = ""; ui.txSearch = ""; ui.txMonth = "periode"; ui.txView = "all"; ui.txCat = "?"; ui.txSel.clear(); closeTx(); view = "transacties"; render(); window.scrollTo(0,0); break;
     case "gocat": {
       const td = ev.target.closest("td"), has = c => td && td.classList.contains(c), mob = window.innerWidth <= 820;
       const sec = has("sec-y") ? "y" : has("sec-f") ? "f" : has("sec-p") ? "p" : (mob ? ui.cmpSec : "p");
       const P = period();
       if (cmpMode() === "normaal" && sec === "y") { navPush(); ui.budFocus = el.dataset.cat; ui.budStatus = new Set(["actief","gestopt","toekomst"]); closeTx(); view = "begroting"; render(); break; }
       if (cmpMode() === "ab") { const PB = periodB(P); const r = sec === "y" ? PB : P; goTx({m1: r.p1, m2: r.p2, cat: el.dataset.cat}); break; }
-      if (sec === "p") { navPush(); ui.txMonth = "periode"; ui.txView = "all"; ui.txCat = el.dataset.cat; ui.txSel.clear(); closeTx(); view = "transacties"; render(); window.scrollTo(0,0); break; }
+      if (sec === "p") { navPush(); ui.txAcc = "__all"; ui.txLbl = ""; ui.txSearch = ""; ui.txMonth = "periode"; ui.txView = "all"; ui.txCat = el.dataset.cat; ui.txSel.clear(); closeTx(); view = "transacties"; render(); window.scrollTo(0,0); break; }
       const C = build(), ref = Math.min(P.p2, todayMi(), isFinite(C.last) ? C.last : P.p2);
       goTx({m1: P.y1, m2: Math.max(P.y1, ref), cat: el.dataset.cat}); break; }
     case "mkrule": ruleDialog(D.transactions.find(t => t.id === id)); break;
